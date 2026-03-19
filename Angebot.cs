@@ -8,5 +8,8 @@ namespace PriceLens_v1._0
     {
         public decimal preis;
         public string waehrung ="";
+
+        public Produkt produkt;
+        public Shop shop;
     }
 }
