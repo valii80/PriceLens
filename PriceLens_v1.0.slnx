@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Projektmappenelemente/">
+    <File Path=".gitignore" />
+  </Folder>
+  <Project Path="PriceLens_v1.0.csproj" />
+</Solution>
