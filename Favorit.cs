@@ -1,4 +1,4 @@
-﻿namespace PriceLens_v1._0;
+﻿namespace PriceLens;
 
 public class Favorit
 {
