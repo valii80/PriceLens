@@ -1,19 +1,26 @@
 ﻿using PriceLens;
 
-IScraper scraper = new FakeScraper();
+Console.WriteLine("=== PriceLens ===");
 
-// Angebote vom Scraper holen
-var angebote = await scraper.ScrapeAsync("iPhone 15");
-
-// Vergleich starten
-VergleichsService service = new VergleichsService();
-var ergebnisse = service.Vergleiche(angebote);
-
-// Ausgabe
-foreach (var e in ergebnisse)
+while (true)
 {
-    Console.WriteLine($"Produkt: {e.produkt?.name}");
-    Console.WriteLine($"Durchschnitt: {e.durchschnittspreis}");
-    Console.WriteLine($"Bester Preis: {e.besterPreis}");
-    Console.WriteLine("------");
+    Console.Write("\nSuchbegriff eingeben (oder 'exit'): ");
+    var suchbegriff = Console.ReadLine();
+
+    if (string.IsNullOrWhiteSpace(suchbegriff))
+        continue;
+
+    if (suchbegriff.ToLower() == "exit")
+        break;
+
+    IScraper scraper = new TestScraper();
+
+    var angebote = await scraper.ScrapeAsync(suchbegriff);
+
+    Console.WriteLine($"\nAngebote gefunden: {angebote.Count}");
+
+    foreach (var a in angebote.Take(5))
+    {
+        Console.WriteLine($"{a.produkt?.name} | {a.preis}€");
+    }
 }
