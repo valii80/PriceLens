@@ -16,15 +16,32 @@ namespace PriceLens
                 .ToLower()
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            return angebote
-                .Where(a =>
+            var ranked = angebote
+                .Select(a =>
                 {
-                    var name = (a.produkt ?.name ??"").ToLower();
+                    var name = (a.produkt?.name ?? "").ToLower();
 
-                    // ✔ mindestens ein Keyword muss vorkommen
-                    return keywords.Any(k => name.Contains(k));
+                    int score = 0;
+
+                    foreach (var k in keywords)
+                    {
+                        if (name.Contains(k))
+                            score++;
+                    }
+
+                    return new
+                    {
+                        Angebot = a,
+                        Score = score
+                    };
                 })
+                // 🔥 wichtigste Änderung
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Angebot.preis)
+                .Select(x => x.Angebot)
                 .ToList();
+
+            return ranked;
         }
     }
 }

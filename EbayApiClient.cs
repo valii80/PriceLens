@@ -8,8 +8,8 @@ public class EbayApiClient
 {
     private readonly HttpClient httpClient = new();
 
-    private readonly string clientId = Environment.GetEnvironmentVariable("EBAY_CLIENT_ID") ?? "";
-    private readonly string clientSecret = Environment.GetEnvironmentVariable("EBAY_CLIENT_SECRET") ?? "";
+    private readonly string clientId = "";
+    private readonly string clientSecret = "";
 
     // 🔐 TOKEN HOLEN
     public async Task<List<Angebot>> SearchAsync(string query, string marketplace)
