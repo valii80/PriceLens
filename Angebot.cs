@@ -11,4 +11,5 @@ public class Angebot
 
     public Produkt? produkt;
     public Shop? shop;
+    public int score { get; set; }
 }

@@ -1,24 +1,27 @@
-﻿namespace PriceLens;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace PriceLens;
 
 public class ScraperManager
 {
-    private List<IScraper> scraperList = new();
+    private List<IScraper> scraper = new();
 
-    public void AddScraper(IScraper scraper)
+    public ScraperManager()
     {
-        scraperList.Add(scraper);
+        scraper.Add(new EbayApiScraper());
     }
 
     public async Task<List<Angebot>> LadeDaten(string suchbegriff)
     {
-        var alleAngebote = new List<Angebot>();
+        var results = new List<Angebot>();
 
-        foreach (var scraper in scraperList)
+        foreach (var s in scraper)
         {
-            var angebote = await scraper.ScrapeAsync(suchbegriff);
-            alleAngebote.AddRange(angebote);
+            var data = await s.ScrapeAsync(suchbegriff);
+            results.AddRange(data);
         }
 
-        return alleAngebote;
+        return results;
     }
 }

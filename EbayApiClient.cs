@@ -4,14 +4,14 @@ using System.Text.Json;
 
 namespace PriceLens;
 
-public class EbayApiClient
+public class EbayApiClient : IScraper
 {
     private readonly HttpClient httpClient = new();
 
     private readonly string clientId = "";
     private readonly string clientSecret = "";
 
-    // 🔐 TOKEN HOLEN
+    // TOKEN HOLEN
     public async Task<List<Angebot>> SearchAsync(string query, string marketplace)
     {
         var tokenJson = await GetAccessTokenAsync();
@@ -24,17 +24,17 @@ public class EbayApiClient
 
         httpClient.DefaultRequestHeaders.Clear();
 
-        // 🔐 Token setzen
+        // Token setzen
         httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);
 
-        // 🌍 REGION setzen (DAS IST DER KEY)
+        // REGION setzen
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-MARKETPLACE-ID", marketplace);
 
         // OPTIONAL aber stabil
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-ENDUSERCTX", "contextualLocation=country=DE");
 
-        // 🔧 QUERY normalisieren
+        // QUERY normalisieren
         query = query.Replace(",", ".");
 
         // Construct the URL with the filter for EUR currency
@@ -122,5 +122,15 @@ public class EbayApiClient
         );
 
         return await response.Content.ReadAsStringAsync();
+    }
+        public async Task<List<Angebot>> ScrapeAsync(string suchbegriff)
+    {
+        var result = new List<Angebot>();
+
+        result.AddRange(await SearchAsync(suchbegriff, "EBAY_DE"));
+        result.AddRange(await SearchAsync(suchbegriff, "EBAY_US"));
+        result.AddRange(await SearchAsync(suchbegriff, "EBAY_GB"));
+
+        return result;
     }
 }

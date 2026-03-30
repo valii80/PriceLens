@@ -1,36 +1,62 @@
-﻿namespace PriceLens;
+﻿using PriceLens;
 
 public class VergleichsService
 {
-    // Startet den Vergleich von Angeboten und liefert Ergebnisse zurück
-    public List<VergleichsErgebnis> Vergleiche(List<Angebot> angebote)
+    private readonly GeminiService gemini = new();
+
+    public async Task<string> VergleicheAsync(Angebot a1, Angebot a2)
     {
-        var ergebnisse = new List<VergleichsErgebnis>();
+        var p1 = a1.produkt?.name ?? "Unbekannt";
+        var p2 = a2.produkt?.name ?? "Unbekannt";
 
-        if (angebote == null || angebote.Count == 0)
-            return ergebnisse;
+        var prompt = $@"
+Du bist ein Produktexperte.
 
-        var gruppen = angebote
-            .GroupBy(a => a.produkt?.name ?? "");
+Vergleiche die folgenden zwei Produkte objektiv und praxisnah:
 
-        foreach (var gruppe in gruppen)
-        {
-            var liste = gruppe.ToList();
+PRODUKT 1:
+Name: {p1}
+Preis: {a1.preis} {a1.waehrung}
 
-            decimal summe = liste.Sum(a => a.preis);
-            decimal durchschnitt = summe / liste.Count;
-            decimal besterPreis = liste.Min(a => a.preis);
+PRODUKT 2:
+Name: {p2}
+Preis: {a2.preis} {a2.waehrung}
 
-            var ergebnis = new VergleichsErgebnis
-            {
-                produkt = liste[0].produkt,
-                durchschnittspreis = durchschnitt,
-                besterPreis = besterPreis
-            };
+Analysiere strukturiert:
 
-            ergebnisse.Add(ergebnis);
-        }
+1. Produktart erkennen:
+- Sind es gleiche Kategorien?
+- Wenn NEIN → erkläre kurz warum kein direkter Vergleich möglich ist
 
-        return ergebnisse;
+2. Preis-Leistung:
+- Welches bietet mehr fürs Geld?
+
+3. Qualität:
+- Typische Qualität dieser Produktart
+- Materialien / Verarbeitung (realistisch einschätzen)
+
+4. Nutzerbewertungen (geschätzt):
+- Realistische Sternebewertung (z.B. 4.2/5)
+- Kurz begründen
+
+5. Einsatzbereich:
+- Für wen geeignet?
+- Alltag / Spezialfall / Reparatur etc.
+
+6. Vorteile & Nachteile:
+- Produkt 1 (Bulletpoints)
+- Produkt 2 (Bulletpoints)
+
+7. Klare Empfehlung:
+- Welches Produkt ist besser?
+- Für welchen Nutzer?
+
+WICHTIG:
+- Antworte klar, strukturiert, übersichtlich
+- Kein unnötiger Text
+- Wenn Produkte nicht vergleichbar sind → deutlich sagen
+";
+
+        return await gemini.GenerateComparison(prompt);
     }
 }

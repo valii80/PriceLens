@@ -1,120 +1,141 @@
 ﻿using PriceLens;
+using System.Collections.Generic;
+using System.Linq;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-var client = new EbayApiClient();
+// ===============================
+// SERVICES INITIALISIEREN
+// ===============================
+var scraperManager = new ScraperManager();
+var filterService = new FilterService();
+var bewertungsService = new BewertungsService();
+var vergleichService = new VergleichsService();
 
-// HAUPTLOOP → läuft bis ESC gedrückt wird
+// ===============================
+// HAUPTLOOP
+// ===============================
 while (true)
 {
     // ===============================
     // HEADER
     // ===============================
-    Console.WriteLine("============  PriceLens  ============");
+    Console.WriteLine("============ PriceLens ============");
     Console.WriteLine("ESC = Beenden");
     Console.WriteLine();
 
     // ===============================
-    // INPUT
+    // USER INPUT
     // ===============================
     var query = ReadEditableInput();
 
-    // Wenn leer → nächste Runde
     if (string.IsNullOrWhiteSpace(query))
         continue;
 
     // ===============================
-    // QUERY VARIANTEN ERZEUGEN
+    // DATEN LADEN (über ScraperManager!)
     // ===============================
-    var words = query
-        .ToLower()
-        .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-    var queries = new List<string>();
-
-    // Original Query
-    queries.Add(query);
-
-    // Varianten (je 1 Wort entfernen)
-    for (int i = 0; i < words.Length; i++)
-    {
-        var reduced = words.Where((w, index) => index != i);
-        var newQuery = string.Join(" ", reduced);
-
-        if (!string.IsNullOrWhiteSpace(newQuery))
-            queries.Add(newQuery);
-    }
-
-    // ===============================
-    // API AUFRUFE
-    // ===============================
-    var allResults = new List<Angebot>();
-
-    foreach (var q in queries.Distinct())
-    {
-        var de = await client.SearchAsync(q, "EBAY_DE");
-        var us = await client.SearchAsync(q, "EBAY_US");
-        var uk = await client.SearchAsync(q, "EBAY_GB");
-
-        allResults.AddRange(de);
-        allResults.AddRange(us);
-        allResults.AddRange(uk);
-    }
+    var allResults = await scraperManager.LadeDaten(query);
 
     // ===============================
     // DUPLIKATE ENTFERNEN
     // ===============================
     var angebote = allResults
-        .GroupBy(a => a.produkt?.name ?? "")
-        .Select(g => g.First())
-        .ToList();
+    .GroupBy(a => a.produkt?.name ?? "")
+    .Select(g => g.First())
+    .ToList();
 
     // ===============================
-    // KEINE SORTIERUNG HIER!
-    // → Program.cs zeigt nur Daten
+    // FILTER (Relevanz)
     // ===============================
-
-    // ===============================
-    // FILTER / RANKING (externe Logik)
-    // ===============================
-    var filterService = new FilterService();
     var gefiltert = filterService.Filter(angebote, query);
 
     // ===============================
-    // AUSGABE (ROHDATEN)
+    // RANKING (Score berechnen)
     // ===============================
-    Console.WriteLine();
-    Console.WriteLine($"Gefunden (roh): {angebote.Count}");
-    Console.WriteLine("==================================================");
-
-    foreach (var a in angebote.Take(5))
-    {
-        Console.WriteLine($"📦 {a.produkt?.name ?? "Unbekannt"}");
-        Console.WriteLine($"💰 {a.preis} {a.waehrung}");
-        Console.WriteLine($"🏪 {a.shop?.name}");
-        Console.WriteLine("--------------------------------------------------");
-    }
+    var ranked = bewertungsService.Rank(gefiltert, query);
+    Console.WriteLine($"DEBUG ranked: {ranked.Count}");
 
     // ===============================
-    // AUSGABE (INTELLIGENTE ERGEBNISSE)
+    // AUSGABE LISTE
     // ===============================
     Console.WriteLine();
-    Console.WriteLine("==============================================");
-    Console.WriteLine();
-
+    Console.WriteLine($"Gefunden (roh): {allResults.Count}");
+    Console.WriteLine($"Nach Dedup: {angebote.Count}");
     Console.WriteLine($"Gefiltert (relevant): {gefiltert.Count}");
-    Console.WriteLine("==================================================");
+    Console.WriteLine("==========================================");
 
-    foreach (var a in gefiltert.Take(5))
+    int index = 1;
+
+    foreach (var a in ranked.Take(10))
     {
-        Console.WriteLine($"📦 {a.produkt?.name ?? "Unbekannt"}");
+        Console.WriteLine($"{index}. {a.produkt?.name ?? "Unbekannt"}");
         Console.WriteLine($"💰 {a.preis} {a.waehrung}");
         Console.WriteLine($"🏪 {a.shop?.name}");
-        Console.WriteLine("--------------------------------------------------");
+        Console.WriteLine("----------------------------------");
+        index++;
     }
 
     // ===============================
-    // WEITER ODER EXIT
+    // VERGLEICH STARTEN
+    // ===============================
+    Console.WriteLine();
+    Console.WriteLine("👉 Vergleich starten? (z.B. 1 2) oder ENTER zum Überspringen:");
+
+    var input = Console.ReadLine();
+
+    if (!string.IsNullOrWhiteSpace(input))
+    {
+        var parts = input.Split(' ');
+
+        int i1, i2;
+
+        // FALL 1: Nur eine Zahl → vergleiche mit Top 1
+        if (parts.Length == 1 && int.TryParse(parts[0], out i2))
+        {
+            i1 = 1;
+        }
+        // FALL 2: Zwei Zahlen
+        else if (parts.Length == 2 &&
+                 int.TryParse(parts[0], out i1) &&
+                 int.TryParse(parts[1], out i2))
+        {
+            // ok
+        }
+        else
+        {
+            Console.WriteLine("❌ Ungültige Eingabe");
+            continue;
+        }
+
+        // ===============================
+        // VALIDIERUNG
+        // ===============================
+        if (i1 > 0 && i2 > 0 &&
+            i1 <= ranked.Count &&
+            i2 <= ranked.Count)
+        {
+            // ===============================
+            // KI VERGLEICH
+            // ===============================
+            var text = await vergleichService.VergleicheAsync(
+                ranked[i1 - 1],
+                ranked[i2 - 1]
+            );
+
+            Console.WriteLine();
+            Console.WriteLine("🤖 KI Vergleich:");
+            Console.WriteLine("----------------------------------");
+            Console.WriteLine(text);
+        }
+        else
+        {
+            Console.WriteLine("❌ Index außerhalb Bereich");
+        }
+    }
+
+    // ===============================
+    // LOOP STEUERUNG
     // ===============================
     Console.WriteLine();
     Console.WriteLine("Neue Suche starten oder --> ESC (Beenden)...");
@@ -123,6 +144,8 @@ while (true)
 
     if (key.Key == ConsoleKey.Escape)
         break;
+
+    Console.Clear();
 }
 
 // ===============================
@@ -172,7 +195,7 @@ static string ReadEditableInput()
             cursor++;
         }
 
-        // 🔁 REDRAW
+        // REDRAW
         Console.SetCursorPosition(0, Console.CursorTop);
         Console.Write("Artikel suchen: " + input + " ");
         Console.SetCursorPosition("Artikel suchen: ".Length + cursor, Console.CursorTop);

@@ -6,42 +6,44 @@ namespace PriceLens
 {
     public class FilterService
     {
-        // Filter für Angebote
         public List<Angebot> Filter(List<Angebot> angebote, string query)
         {
-            if (string.IsNullOrWhiteSpace(query))
-                return angebote;
-
-            var keywords = query
+            var queryWords = query
                 .ToLower()
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            var ranked = angebote
-                .Select(a =>
+            return angebote
+                .Where(a =>
                 {
                     var name = (a.produkt?.name ?? "").ToLower();
 
-                    int score = 0;
+                    // 🔹 1. MUSS alle Query-Wörter enthalten
+                    bool containsAll = queryWords.All(w => name.Contains(w));
+                    if (!containsAll)
+                        return false;
 
-                    foreach (var k in keywords)
+                    // 🔹 2. PRODUKT-STRUKTUR CHECK (MAGIE HIER)
+                    int wordCount = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+                    // 👉 zu viele extra Wörter = Zubehör
+                    if (wordCount > queryWords.Length + 10)
+                        return false;
+
+                    // 🔹 3. Reihenfolge prüfen
+                    int lastIndex = -1;
+                    foreach (var word in queryWords)
                     {
-                        if (name.Contains(k))
-                            score++;
+                        int index = name.IndexOf(word);
+                        if (index < lastIndex)
+                            return false;
+
+                        lastIndex = index;
                     }
 
-                    return new
-                    {
-                        Angebot = a,
-                        Score = score
-                    };
+                    return true;
                 })
-                // 🔥 wichtigste Änderung
-                .OrderByDescending(x => x.Score)
-                .ThenBy(x => x.Angebot.preis)
-                .Select(x => x.Angebot)
                 .ToList();
-
-            return ranked;
         }
     }
 }
+        
