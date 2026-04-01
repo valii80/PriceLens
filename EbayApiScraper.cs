@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace PriceLens;
 
-public class EbayApiScraper : IScraper
+public class EbayApiScraper : IScraper<List<Angebot>>
 {
     private readonly EbayApiClient client = new();
 

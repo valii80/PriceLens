@@ -1,6 +1,9 @@
-﻿namespace PriceLens;
+﻿using System.Threading.Tasks;
 
-public interface IScraper
+namespace PriceLens
 {
-    Task<List<Angebot>> ScrapeAsync(string suchbegriff);
+    public interface IScraper<T>
+    {
+        Task<T> ScrapeAsync(string input);
+    }
 }

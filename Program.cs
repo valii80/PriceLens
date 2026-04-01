@@ -1,7 +1,10 @@
-﻿using PriceLens;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
+using PriceLens;
 
+// ===============================
+// ENCODING
+// ===============================
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 // ===============================
@@ -12,14 +15,13 @@ var filterService = new FilterService();
 var bewertungsService = new BewertungsService();
 var vergleichService = new VergleichsService();
 
+var webScraper = new GenericShopScraper(new HttpClient());
+
 // ===============================
 // HAUPTLOOP
 // ===============================
 while (true)
 {
-    // ===============================
-    // HEADER
-    // ===============================
     Console.WriteLine("============ PriceLens ============");
     Console.WriteLine("ESC = Beenden");
     Console.WriteLine();
@@ -33,54 +35,57 @@ while (true)
         continue;
 
     // ===============================
-    // DATEN LADEN (über ScraperManager!)
+    // WEB SCRAPER
     // ===============================
-    var allResults = await scraperManager.LadeDaten(query);
+    string encodedQuery = Uri.EscapeDataString(query);
+    string url = $"https://geizhals.de/?fs={encodedQuery}";
+    
+    var webResults = await webScraper.ScrapeListAsync(url);
 
     // ===============================
-    // DUPLIKATE ENTFERNEN
+    // EBAY DATEN LADEN
     // ===============================
-    var angebote = allResults
-    .GroupBy(a => a.produkt?.name ?? "")
-    .Select(g => g.First())
-    .ToList();
+    Console.WriteLine("\n");
+    Console.WriteLine("\n");
+    Console.WriteLine("                    *** 🌐 EBAY API SUCHERGEBNISSE ***");
+    Console.WriteLine("\n");
 
-    // ===============================
-    // FILTER (Relevanz)
-    // ===============================
-    var gefiltert = filterService.Filter(angebote, query);
+    var searchService = new SearchService();
+    var result = await searchService.Search(query);
 
-    // ===============================
-    // RANKING (Score berechnen)
-    // ===============================
-    var ranked = bewertungsService.Rank(gefiltert, query);
-    Console.WriteLine($"DEBUG ranked: {ranked.Count}");
-
-    // ===============================
-    // AUSGABE LISTE
-    // ===============================
-    Console.WriteLine();
-    Console.WriteLine($"Gefunden (roh): {allResults.Count}");
-    Console.WriteLine($"Nach Dedup: {angebote.Count}");
-    Console.WriteLine($"Gefiltert (relevant): {gefiltert.Count}");
-    Console.WriteLine("==========================================");
-
+    var allResults = result.raw;
+    var gefiltert = result.gefiltert;
+    var cleaned = result.cleaned;
+    var ranked = result.ranked;
     int index = 1;
 
-    foreach (var a in ranked.Take(10))
+    foreach (var a in ranked.Take(100))
     {
+        Console.WriteLine("-------------------------------------------------------------------------------");
         Console.WriteLine($"{index}. {a.produkt?.name ?? "Unbekannt"}");
         Console.WriteLine($"💰 {a.preis} {a.waehrung}");
-        Console.WriteLine($"🏪 {a.shop?.name}");
-        Console.WriteLine("----------------------------------");
+        Console.WriteLine($"🌐 {a.shop?.name}");
+        Console.WriteLine("-------------------------------------------------------------------------------");
+        
         index++;
     }
 
     // ===============================
-    // VERGLEICH STARTEN
+    // EBAY STATISTIK
     // ===============================
     Console.WriteLine();
-    Console.WriteLine("👉 Vergleich starten? (z.B. 1 2) oder ENTER zum Überspringen:");
+    Console.WriteLine("==================================================");
+    Console.WriteLine($"✅ Gesamt gefunden:          {allResults.Count}");
+    Console.WriteLine($"⏳ Sortiert nach Relevanz:   {gefiltert.Count}");
+    Console.WriteLine($"✔  Verwendbare Ergebnisse:   {ranked.Count}");
+    Console.WriteLine("==================================================");
+    Console.WriteLine("\n");
+
+    // ===============================
+    // VERGLEICH
+    // ===============================
+    Console.WriteLine();
+    Console.WriteLine("👉 Vergleich starten (z.B. 1 2 + ENTER oder ENTER zum Überspringen):");
 
     var input = Console.ReadLine();
 
@@ -90,17 +95,14 @@ while (true)
 
         int i1, i2;
 
-        // FALL 1: Nur eine Zahl → vergleiche mit Top 1
         if (parts.Length == 1 && int.TryParse(parts[0], out i2))
         {
             i1 = 1;
         }
-        // FALL 2: Zwei Zahlen
         else if (parts.Length == 2 &&
                  int.TryParse(parts[0], out i1) &&
                  int.TryParse(parts[1], out i2))
         {
-            // ok
         }
         else
         {
@@ -108,16 +110,10 @@ while (true)
             continue;
         }
 
-        // ===============================
-        // VALIDIERUNG
-        // ===============================
         if (i1 > 0 && i2 > 0 &&
             i1 <= ranked.Count &&
             i2 <= ranked.Count)
         {
-            // ===============================
-            // KI VERGLEICH
-            // ===============================
             var text = await vergleichService.VergleicheAsync(
                 ranked[i1 - 1],
                 ranked[i2 - 1]
@@ -134,11 +130,8 @@ while (true)
         }
     }
 
-    // ===============================
-    // LOOP STEUERUNG
-    // ===============================
     Console.WriteLine();
-    Console.WriteLine("Neue Suche starten oder --> ESC (Beenden)...");
+    Console.WriteLine("ENTER (Neue Suche starten) oder --> ESC (Beenden)...");
 
     var key = Console.ReadKey(true);
 
@@ -149,7 +142,7 @@ while (true)
 }
 
 // ===============================
-// EDITIERBARE INPUT-METHODE
+// INPUT MIT CURSOR STEUERUNG
 // ===============================
 static string ReadEditableInput()
 {
@@ -162,14 +155,12 @@ static string ReadEditableInput()
     {
         var key = Console.ReadKey(true);
 
-        // ENTER → fertig
         if (key.Key == ConsoleKey.Enter)
         {
             Console.WriteLine();
             return input;
         }
 
-        // BACKSPACE
         if (key.Key == ConsoleKey.Backspace)
         {
             if (cursor > 0 && input.Length > 0)
@@ -178,24 +169,20 @@ static string ReadEditableInput()
                 cursor--;
             }
         }
-        // LINKS
         else if (key.Key == ConsoleKey.LeftArrow && cursor > 0)
         {
             cursor--;
         }
-        // RECHTS
         else if (key.Key == ConsoleKey.RightArrow && cursor < input.Length)
         {
             cursor++;
         }
-        // TEXT
         else if (!char.IsControl(key.KeyChar))
         {
             input = input.Insert(cursor, key.KeyChar.ToString());
             cursor++;
         }
 
-        // REDRAW
         Console.SetCursorPosition(0, Console.CursorTop);
         Console.Write("Artikel suchen: " + input + " ");
         Console.SetCursorPosition("Artikel suchen: ".Length + cursor, Console.CursorTop);

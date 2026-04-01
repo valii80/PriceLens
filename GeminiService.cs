@@ -11,7 +11,6 @@ public class GeminiService
 
     // ⚠️ API KEY (vor GitHub entfernen!)
     private readonly string apiKey = "";
-
     public async Task<string> GenerateComparison(string prompt)
     {
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={apiKey}";

@@ -5,8 +5,7 @@ namespace PriceLens;
 
 public class ScraperManager
 {
-    private List<IScraper> scraper = new();
-
+    private List<IScraper<List<Angebot>>> scraper = new();
     public ScraperManager()
     {
         scraper.Add(new EbayApiScraper());

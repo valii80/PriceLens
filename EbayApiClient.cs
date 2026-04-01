@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace PriceLens;
 
-public class EbayApiClient : IScraper
+public class EbayApiClient : IScraper<List<Angebot>>
 {
     private readonly HttpClient httpClient = new();
 
@@ -24,79 +24,100 @@ public class EbayApiClient : IScraper
 
         httpClient.DefaultRequestHeaders.Clear();
 
-        // Token setzen
+        // 🔑 Token setzen
         httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);
 
-        // REGION setzen
+        // 🌍 Region setzen
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-MARKETPLACE-ID", marketplace);
 
-        // OPTIONAL aber stabil
+        // 📍 Kontext (Deutschland)
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-ENDUSERCTX", "contextualLocation=country=DE");
 
-        // QUERY normalisieren
+        // 🔧 Query normalisieren
         query = query.Replace(",", ".");
 
-        // Construct the URL with the filter for EUR currency
         var encodedQuery = Uri.EscapeDataString(query);
 
-        // 🌐 URL
-        var url = $"https://api.ebay.com/buy/browse/v1/item_summary/search?q={encodedQuery}&limit=10&filter=deliveryCountry:DE";
-        
-        // Send GET request
-        var response = await httpClient.GetAsync(url);
-        var json = await response.Content.ReadAsStringAsync();
-
+        // ===============================
+        // 🔥 PAGINATION START
+        // ===============================
         var result = new List<Angebot>();
 
-        // Parse the response JSON
-        var doc = System.Text.Json.JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("itemSummaries", out var items))
+        int limit = 50;     // max pro Anfrage
+        int maxPages = 5;   // wie viele Seiten du laden willst
+
+        for (int page = 0; page < maxPages; page++)
         {
-            return new List<Angebot>();
-        }
+            int offset = page * limit;
 
-        // Process each item in the response
-        foreach (var item in items.EnumerateArray())
-        {
-            var angebot = new Angebot();
+            // 🌐 URL mit OFFSET
+            var url = $"https://api.ebay.com/buy/browse/v1/item_summary/search?q={encodedQuery}&limit=50";
 
-            // Set product data
-            angebot.produkt = new Produkt
+            // 📡 Anfrage senden
+            var response = await httpClient.GetAsync(url);
+            var json = await response.Content.ReadAsStringAsync();
+
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+
+            // ❌ Keine Daten → abbrechen
+            if (!doc.RootElement.TryGetProperty("itemSummaries", out var items))
+                break;
+
+            int count = 0;
+
+            // ===============================
+            // PARSING
+            // ===============================
+            foreach (var item in items.EnumerateArray())
             {
-                name = item.GetProperty("title").GetString() ?? "",
-                kategorie = "eBay",
-                bewertung = 0
-            };
+                count++;
 
-            // Set price and currency
-            if (item.TryGetProperty("price", out var priceProp))
-            {
-                angebot.preis = decimal.Parse(
-                    priceProp.GetProperty("value").GetString() ?? "0",
-                    System.Globalization.CultureInfo.InvariantCulture
-                );
+                var angebot = new Angebot();
 
-                angebot.waehrung = priceProp.GetProperty("currency").GetString() ?? "";
+                // Produktdaten
+                angebot.produkt = new Produkt
+                {
+                    name = item.GetProperty("title").GetString() ?? "",
+                    kategorie = "eBay",
+                    bewertung = 0
+                };
+
+                // Preis
+                if (item.TryGetProperty("price", out var priceProp))
+                {
+                    angebot.preis = decimal.Parse(
+                        priceProp.GetProperty("value").GetString() ?? "0",
+                        System.Globalization.CultureInfo.InvariantCulture
+                    );
+
+                    angebot.waehrung = priceProp.GetProperty("currency").GetString() ?? "";
+                }
+
+                // Shop
+                angebot.shop = new Shop
+                {
+                    name = marketplace,
+                    url = marketplace switch
+                    {
+                        "EBAY_DE" => "https://www.ebay.de",
+                        "EBAY_US" => "https://www.ebay.com",
+                        "EBAY_GB" => "https://www.ebay.co.uk",
+                        _ => "https://www.ebay.com"
+                    }
+                };
+
+                result.Add(angebot);
             }
 
-            // Set shop data
-            angebot.shop = new Shop
-            {
-                name = marketplace,
-                url = marketplace switch
-                {
-                    "EBAY_DE" => "https://www.ebay.de",
-                    "EBAY_US" => "https://www.ebay.com",
-                    "EBAY_GB" => "https://www.ebay.co.uk",
-                    _ => "https://www.ebay.com"
-                }
-            };
-
-            // Add to results
-            result.Add(angebot);
+            // ❌ Wenn Seite leer → keine weiteren Seiten vorhanden
+            if (count == 0)
+                break;
         }
 
+        // ===============================
+        // ALLE SEITEN ZURÜCKGEBEN
+        // ===============================
         return result;
     }
 

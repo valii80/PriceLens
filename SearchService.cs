@@ -17,21 +17,24 @@ public class SearchService
         bewertung = new BewertungsService();
     }
 
-    public async Task<List<Angebot>> Search(string query)
+    public async Task<(List<Angebot> raw, List<Angebot> gefiltert, List<Angebot> cleaned, List<Angebot> ranked)> Search(string query)
     {
-        var daten = await scraper.LadeDaten(query);
+        // ROHE ERGEBNISSE
+        var raw = await scraper.LadeDaten(query);
 
-        // Filter (optional)
+        // FILTER
         var filter = new FilterService();
-        daten = filter.Filter(daten, query);
+        var gefiltert = filter.Filter(raw, query);
 
-        // Duplikate entfernen
-        daten = daten
-            .GroupBy(x => x.produkt?.name ?? "")
+        // DUPPLIKATE ENTFERNT
+        var cleanedResults = gefiltert
+            .GroupBy(a => a.produkt?.name ?? "")
             .Select(g => g.First())
             .ToList();
 
-        return bewertung.Rank(daten, query);
-    }
+        // RANK (ÜBRIG ZUR VERFÜGUNG)
+        var ranked = bewertung.Rank(cleanedResults, query);
 
+        return (raw, gefiltert, cleanedResults, ranked);
+    }
 }

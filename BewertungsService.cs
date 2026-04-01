@@ -7,65 +7,47 @@ public class BewertungsService
 {
     public List<Angebot> Rank(List<Angebot> angebote, string query)
     {
-        var queryWords = query
-            .ToLower()
-            .Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+        var queryLower = query.ToLower();
+        var queryWords = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        // Wir nehmen den Median oder den Durchschnitt der teureren Hälfte, 
+        // um den "echten" Preis des Produkts zu schätzen.
+        var prices = angebote.Select(a => (double)a.preis).OrderByDescending(p => p).ToList();
+        double topAverage = prices.Take(Math.Max(1, prices.Count / 10)).Average();
 
         foreach (var a in angebote)
         {
             var name = (a.produkt?.name ?? "").ToLower();
+            var titleWords = name.Split(new[] { ' ', '/', '-', '|' }, StringSplitOptions.RemoveEmptyEntries);
+            double score = 0;
+            double preis = (double)a.preis;
 
-            var queryLower = query.ToLower();
+            // 1. Wort-Übereinstimmung (Jedes Wort zählt!)
+            int matches = queryWords.Count(qW => name.Contains(qW));
+            score += matches * 500;
 
-            // 🔹 NUR die ersten 3–5 Wörter sind wichtig
-            var nameWords = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var coreWords = nameWords.Take(5).ToList();
+            // 2. Penalty für "Fremdwörter" (Verhindert Hüllen-Spam)
+            int extraWords = titleWords.Length - matches;
+            score -= extraWords * 50;
 
-            int score = 0;
+            // 3. Preis-Logik (Dynamisch für Handy ODER Chips)
+            // Wenn ein Artikel weniger als 20% vom "Top-Schnitt" kostet -> Zubehör-Verdacht
+            if (preis < (topAverage * 0.2))
+            {
+                score -= 2000;
+            }
+            else if (preis > (topAverage * 0.7))
+            {
+                score += 1000; // Das ist wahrscheinlich das Hauptgerät
+            }
 
-            var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // 4. Phrasen-Bonus (Hintereinander geschriebene Wörter)
+            if (name.Contains(queryLower)) score += 500;
 
-            // 🔹 1. Query Match
-            int matches = queryWords.Count(q => name.Contains(q));
-            score += matches * 50;
-
-            // 🔹 2. Exakte Phrase
-            if (name.Contains(queryLower))
-                score += 100;
-
-            // 🔹 3. Start Bonus
-            if (name.StartsWith(queryLower))
-                score += 80;
-
-            // 🔥 4. PENALTY SYSTEM (DER GAME CHANGER)
-
-            // 👉 sehr lange Titel = meistens Zubehör / Spam
-            if (words.Length > queryWords.Length + 4)
-                score -= 150;
-
-            // 👉 viele Zahlen / Modelle gemischt = Zubehör typisch
-            int digitCount = words.Count(w => w.Any(char.IsDigit));
-            if (digitCount > 3)
-                score -= 100;
-
-            // 👉 wenn viele unterschiedliche Modelle drin (14 15 16 17)
-            int modelSpam = words.Count(w => w.Length <= 3 && w.All(char.IsDigit));
-            if (modelSpam >= 3)
-                score -= 200;
-
-            // 👉 Titel enthält zu viele generische Wörter
-            if (words.Length > 10)
-                score -= 100;
-
-            // 🔹 5. Gute Struktur Bonus
-            if (words.Length <= queryWords.Length + 3)
-                score += 50;
-
-            a.score = score;
+            a.score = (int)score;
         }
 
-        return angebote
-            .OrderByDescending(a => a.score)
-            .ToList();
+        return angebote.OrderByDescending(a => a.score).ToList();
     }
+
 }
