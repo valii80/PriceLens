@@ -12,7 +12,6 @@ namespace PriceLens
         public GenericShopScraper(HttpClient httpClient) => _httpClient = httpClient;
 
         public async Task<Produkt> ScrapeAsync(string url) => new Produkt { name = "Nicht verwendet" };
-
         public async Task<ScrapeResult> ScrapeListAsync(string url)
         {
             var finalResult = new ScrapeResult();
@@ -31,6 +30,9 @@ namespace PriceLens
                     { "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" }
                 });
 
+                //==============
+                // PAGINATION
+                //==============
                 int maxPages = 2;
                 for (int pageIndex = 1; pageIndex <= maxPages; pageIndex++)
                 {
@@ -39,33 +41,68 @@ namespace PriceLens
 
                     await page.GotoAsync(pagedUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
                     await page.WaitForTimeoutAsync(2000);
-                    
+
                     //===================================
-                    // COOKIES automatisch akzeptieren
+                    // COOKIES europaweit akzeptieren
                     //===================================
                     if (pageIndex == 1)
                     {
-                        string[] cookieTexts = { "Alle akzeptieren", "Accept all", "Akzeptieren", "Zustimmen" };
+                        // 1. Sprachübergreifende Wortliste (DE, EN, FR, IT, ES, PL, NL, etc.)
+                        string[] cookieTexts = {
+        "Akzeptieren", "Alle akzeptieren", "Zustimmen", "OK", "Accept", "Accept all", "Agree", "Allow all",
+        "Accepter", "Tout accepter", "Accetta", "Aceptar", "Aceptar todo", "Aceitar",
+        "Akceptuj", "Zgadzam się", "Souhlasím", "Súhlasím", "Accepteren", "Elfogadom"
+    };
+
                         bool cookieClicked = false;
+
+                        // Erst nach Texten suchen (Timeout auf 800ms reduziert für Speed)
                         foreach (var text in cookieTexts)
                         {
                             try
                             {
-                                await page.ClickAsync($"button:has-text('{text}')", new() { Timeout = 2000 });
+                                await page.ClickAsync($"button:has-text('{text}')", new() { Timeout = 800 });
                                 Console.WriteLine($"✅ Cookies: {text}");
-                                cookieClicked = true; break;
+                                cookieClicked = true;
+                                break;
                             }
-                            catch { }
+                            catch { /* Nächstes Wort probieren */ }
                         }
-                        if (!cookieClicked) finalResult.Logs.Add("⚠️ Kein Cookie Popup gefunden");
-                        
+
+                        // 2. FALLBACK: Technische Selektoren (Falls der Text ein Icon ist oder fehlt)
+                        if (!cookieClicked)
+                        {
+                            string[] universalSelectors = {
+            "#onetrust-accept-btn-handler", // OneTrust
+            "#didomi-notice-agree-button",  // Didomi (Geizhals)
+            "button[id*='accept']",
+            "button[class*='accept']",
+            ".save-all",
+            "#accept-all"
+        };
+
+                            foreach (var sel in universalSelectors)
+                            {
+                                try
+                                {
+                                    await page.ClickAsync(sel, new() { Timeout = 500 });
+                                    Console.WriteLine($"✅ Cookies (Technisch): {sel}");
+                                    cookieClicked = true;
+                                    break;
+                                }
+                                catch { }
+                            }
+                        }
+
+                        if (!cookieClicked) finalResult.Logs.Add("⚠️ Kein Cookie-Popup bestätigt (eventuell bereits weg oder unbekannt)");
+
                         //===================
                         // OVERLAY KILLER
                         //===================
                         try
                         {
-                            await page.EvaluateAsync("document.querySelectorAll('*').forEach(el => { if (window.getComputedStyle(el).position === 'fixed') el.remove(); });");
-                            Console.WriteLine("✅ Overlay entfernt");
+                            await page.EvaluateAsync("document.querySelectorAll('*').forEach(el => { if (window.getComputedStyle(el).position === 'fixed' || window.getComputedStyle(el).position === 'absolute') { if(el.innerText.length < 500) el.remove(); } });");
+                            Console.WriteLine("✅ Overlays entfernt");
                         }
                         catch { }
                     }
