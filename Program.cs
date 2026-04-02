@@ -10,11 +10,7 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 // ===============================
 // SERVICES INITIALISIEREN
 // ===============================
-var scraperManager = new ScraperManager();
-var filterService = new FilterService();
-var bewertungsService = new BewertungsService();
 var vergleichService = new VergleichsService();
-
 var webScraper = new GenericShopScraper(new HttpClient());
 
 // ===============================
@@ -22,123 +18,109 @@ var webScraper = new GenericShopScraper(new HttpClient());
 // ===============================
 while (true)
 {
-    Console.WriteLine("============ PriceLens ============");
-    Console.WriteLine("ESC = Beenden");
+    Console.Clear();
+
+    // ================
+    // HEADER
+    // ================
+    Console.WriteLine("╔═════════════════════════════════════════════════╗");
+    Console.WriteLine("║               🔍 PRICELENS SEARCH               ║");
+    Console.WriteLine("╚═════════════════════════════════════════════════╝");
+    Console.WriteLine(" › Drücke ESC zum Beenden");
     Console.WriteLine();
 
-    // ===============================
-    // USER INPUT
-    // ===============================
     var query = ReadEditableInput();
+    if (string.IsNullOrWhiteSpace(query)) continue;
 
-    if (string.IsNullOrWhiteSpace(query))
-        continue;
+    // ================
+    // DATEN LADEN
+    // ================
+    Console.WriteLine("\n ⏳ Suche läuft auf Geizhals und eBay...");
 
-    // ===============================
-    // WEB SCRAPER
-    // ===============================
-    string encodedQuery = Uri.EscapeDataString(query);
-    string url = $"https://geizhals.de/?fs={encodedQuery}";
-    
-    var webResults = await webScraper.ScrapeListAsync(url);
-
-    // ===============================
-    // EBAY DATEN LADEN
-    // ===============================
-    Console.WriteLine("\n");
-    Console.WriteLine("\n");
-    Console.WriteLine("                    *** 🌐 EBAY API SUCHERGEBNISSE ***");
-    Console.WriteLine("\n");
-
+    var ghResult = await webScraper.ScrapeListAsync($"https://geizhals.de/?fs={Uri.EscapeDataString(query)}");
     var searchService = new SearchService();
-    var result = await searchService.Search(query);
+    var ebayResult = await searchService.Search(query);
 
-    var allResults = result.raw;
-    var gefiltert = result.gefiltert;
-    var cleaned = result.cleaned;
-    var ranked = result.ranked;
-    int index = 1;
+    var alleAngebote = new List<DisplayItem>();
 
-    foreach (var a in ranked.Take(100))
+    foreach (var p in ghResult.Produkte)
     {
-        Console.WriteLine("-------------------------------------------------------------------------------");
-        Console.WriteLine($"{index}. {a.produkt?.name ?? "Unbekannt"}");
-        Console.WriteLine($"💰 {a.preis} {a.waehrung}");
-        Console.WriteLine($"🌐 {a.shop?.name}");
-        Console.WriteLine("-------------------------------------------------------------------------------");
-        
-        index++;
+        alleAngebote.Add(new DisplayItem { 
+            Name = p.name, 
+            Preis = p.bewertung, 
+            Shop = "GEIZHALS_AT", 
+            OriginalObject = p });
     }
 
-    // ===============================
-    // EBAY STATISTIK
-    // ===============================
-    Console.WriteLine();
-    Console.WriteLine("==================================================");
-    Console.WriteLine($"✅ Gesamt gefunden:          {allResults.Count}");
-    Console.WriteLine($"⏳ Sortiert nach Relevanz:   {gefiltert.Count}");
-    Console.WriteLine($"✔  Verwendbare Ergebnisse:   {ranked.Count}");
-    Console.WriteLine("==================================================");
-    Console.WriteLine("\n");
+    foreach (var a in ebayResult.ranked.Take(300))
+    {
+        alleAngebote.Add(new DisplayItem { 
+            Name = a.produkt?.name ?? "Unbekannt", 
+            Preis = (double)a.preis, 
+            Shop = a.shop?.name ?? "EBAY", 
+            OriginalObject = a });
+    }
+
+    // ============================
+    // EINHEITLICHE DARSTELLUNG
+    // ============================
+    Console.Clear();
+    Console.WriteLine("\n-----------------------------------------------------------------------------------------");
+    Console.WriteLine("                            *** 🌐 ALLE SUCHERGEBNISSE ***");
+    Console.WriteLine("=========================================================================================\n");
+
+    // =======================
+    // ARTIKEL AUFLISTUNG
+    // =======================
+    for (int i = 0; i < alleAngebote.Count; i++)
+    {
+        var item = alleAngebote[i];
+
+        Console.WriteLine($"{i + 1}. {item.Name}");
+        Console.WriteLine($"💰 {item.Preis:0.00} €");
+        Console.WriteLine($"🌐 {item.Shop}");
+        Console.WriteLine("-----------------------------------------------------------------------------------------");
+    }
+
+    // STATISTIKEN
+    Console.WriteLine("=========================================================================================");
+    Console.WriteLine($"|🌐 GEIZHALS:      {ghResult.TotalGefunden,-4} Artikel gefunden         | Gesamt");
+    Console.WriteLine($"|🌐 GEIZHALS:      {ghResult.Gefiltert,-4} Artikel entfernt         | Keine Angebote (Preis fehlt)");
+    Console.WriteLine($"|🌐 EBAY:          {ebayResult.raw.Count,-4} Artikel gefunden         | Gesamt gefundene Artikel");
+    Console.WriteLine($"|🌐 EBAY:          {ebayResult.ranked.Count,-4} Artikel sortiert         | Relevante Ergebnisse");
+    Console.WriteLine($"|📋 AUFGELISTET:   {alleAngebote.Count,-4} Artikel gesamt           | Geizhals + Ebay");
+    Console.WriteLine("=========================================================================================\n");
 
     // ===============================
     // VERGLEICH
     // ===============================
     Console.WriteLine();
-    Console.WriteLine("👉 Vergleich starten (z.B. 1 2 + ENTER oder ENTER zum Überspringen):");
+    Console.WriteLine("👉(2)ARTIKEL-Vergleich starten --> (z.B. 14 36 + ENTER) oder ENTER zum Überspringen:");
 
     var input = Console.ReadLine();
-
     if (!string.IsNullOrWhiteSpace(input))
     {
         var parts = input.Split(' ');
+        if (parts.Length == 2 && int.TryParse(parts[0], out int i1) && int.TryParse(parts[1], out int i2))
+        {
+            if (i1 > 0 && i2 > 0 && i1 <= alleAngebote.Count && i2 <= alleAngebote.Count)
+            {
+                Console.WriteLine("\n🤖 KI-Assistent analisysiert die Angebote...⏳");
+                var text = await vergleichService.VergleicheAsync(alleAngebote[i1 - 1], alleAngebote[i2 - 1]);
 
-        int i1, i2;
-
-        if (parts.Length == 1 && int.TryParse(parts[0], out i2))
-        {
-            i1 = 1;
-        }
-        else if (parts.Length == 2 &&
-                 int.TryParse(parts[0], out i1) &&
-                 int.TryParse(parts[1], out i2))
-        {
-        }
-        else
-        {
-            Console.WriteLine("❌ Ungültige Eingabe");
-            continue;
-        }
-
-        if (i1 > 0 && i2 > 0 &&
-            i1 <= ranked.Count &&
-            i2 <= ranked.Count)
-        {
-            var text = await vergleichService.VergleicheAsync(
-                ranked[i1 - 1],
-                ranked[i2 - 1]
-            );
-
-            Console.WriteLine();
-            Console.WriteLine("🤖 KI Vergleich:");
-            Console.WriteLine("----------------------------------");
-            Console.WriteLine(text);
-        }
-        else
-        {
-            Console.WriteLine("❌ Index außerhalb Bereich");
+                // DEINE GELIEBTE KI-BOX
+                Console.WriteLine("\n╔════════════════════════════════════════════════════════════╗");
+                Console.WriteLine("║                    🤖 KI VERGLEICHSBERICHT                 ║");
+                Console.WriteLine("╚════════════════════════════════════════════════════════════╝");
+                Console.WriteLine(text);
+            }
+            else Console.WriteLine("❌ Ungültiger Index!");
         }
     }
 
-    Console.WriteLine();
-    Console.WriteLine("ENTER (Neue Suche starten) oder --> ESC (Beenden)...");
-
-    var key = Console.ReadKey(true);
-
-    if (key.Key == ConsoleKey.Escape)
-        break;
-
-    Console.Clear();
+    Console.WriteLine("\n[ENTER] Neue Suche | [ESC] Beenden");
+    var keyInfo = Console.ReadKey(true);
+    if (keyInfo.Key == ConsoleKey.Escape) break;
 }
 
 // ===============================
@@ -148,43 +130,21 @@ static string ReadEditableInput()
 {
     var input = "";
     int cursor = 0;
-
-    Console.Write("Artikel suchen: ");
+    Console.Write(" Artikel suchen: ");
 
     while (true)
     {
         var key = Console.ReadKey(true);
-
-        if (key.Key == ConsoleKey.Enter)
-        {
-            Console.WriteLine();
-            return input;
-        }
-
-        if (key.Key == ConsoleKey.Backspace)
-        {
-            if (cursor > 0 && input.Length > 0)
-            {
-                input = input.Remove(cursor - 1, 1);
-                cursor--;
-            }
-        }
-        else if (key.Key == ConsoleKey.LeftArrow && cursor > 0)
-        {
-            cursor--;
-        }
-        else if (key.Key == ConsoleKey.RightArrow && cursor < input.Length)
-        {
-            cursor++;
-        }
-        else if (!char.IsControl(key.KeyChar))
-        {
-            input = input.Insert(cursor, key.KeyChar.ToString());
-            cursor++;
-        }
+        if (key.Key == ConsoleKey.Enter) { Console.WriteLine(); return input; }
+        if (key.Key == ConsoleKey.Backspace && cursor > 0) { input = input.Remove(cursor - 1, 1); cursor--; }
+        else if (key.Key == ConsoleKey.LeftArrow && cursor > 0) cursor--;
+        else if (key.Key == ConsoleKey.RightArrow && cursor < input.Length) cursor++;
+        else if (!char.IsControl(key.KeyChar)) { input = input.Insert(cursor, key.KeyChar.ToString()); cursor++; }
 
         Console.SetCursorPosition(0, Console.CursorTop);
-        Console.Write("Artikel suchen: " + input + " ");
-        Console.SetCursorPosition("Artikel suchen: ".Length + cursor, Console.CursorTop);
+        Console.Write(new string(' ', Console.WindowWidth));
+        Console.SetCursorPosition(0, Console.CursorTop);
+        Console.Write(" Artikel suchen: " + input);
+        Console.SetCursorPosition(" Artikel suchen: ".Length + cursor, Console.CursorTop);
     }
 }

@@ -9,7 +9,7 @@ public class GeminiService
 {
     private readonly HttpClient http = new();
 
-    // ⚠️ API KEY (vor GitHub Push entfernen!)
+    // ⚠️ API KEY GEMINI (vor GitHub Push entfernen!)
     private readonly string apiKey = "";
 
     public async Task<string> GenerateComparison(string prompt)

@@ -9,198 +9,73 @@ namespace PriceLens
     public class GenericShopScraper : IScraper<Produkt>
     {
         private readonly HttpClient _httpClient;
+        public GenericShopScraper(HttpClient httpClient) => _httpClient = httpClient;
 
-        public GenericShopScraper(HttpClient httpClient)
-        {
-            _httpClient = httpClient;
-        }
+        public async Task<Produkt> ScrapeAsync(string url) => new Produkt { name = "Nicht verwendet" };
 
-        public async Task<Produkt> ScrapeAsync(string url)
+        public async Task<ScrapeResult> ScrapeListAsync(string url)
         {
-            return new Produkt
-            {
-                name = "Nicht verwendet",
-                kategorie = "Web",
-                bewertung = 0
-            };
-        }
-
-        public async Task<List<Produkt>> ScrapeListAsync(string url)
-        {
+            var finalResult = new ScrapeResult();
             var results = new List<Produkt>();
 
             try
             {
                 int totalCount = 0;
-                int index = 1;
                 int filteredOut = 0;
 
                 using var playwright = await Playwright.CreateAsync();
-                await using var browser = await playwright.Chromium.LaunchAsync(new()
-                {
-                    Headless = false
-                });
-
+                await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = false });
                 var page = await browser.NewPageAsync();
 
-                await page.SetExtraHTTPHeadersAsync(new Dictionary<string, string>
-                {
+                await page.SetExtraHTTPHeadersAsync(new Dictionary<string, string> {
                     { "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" }
                 });
 
-                // ===============================
-                // PAGINATION
-                // ===============================
                 int maxPages = 2;
-
                 for (int pageIndex = 1; pageIndex <= maxPages; pageIndex++)
                 {
-                    if (page == null || page.IsClosed)
-                    {
-                        Console.WriteLine("⚠️ Seite ist geschlossen → Abbruch");
-                        break;
-                    }
+                    if (page == null || page.IsClosed) break;
+                    string pagedUrl = pageIndex == 1 ? url : $"{url}&pg={pageIndex}";
 
-                    string pagedUrl = pageIndex == 1
-                        ? url
-                        : $"{url}&pg={pageIndex}";
-
-                    Console.WriteLine("\n");
-
-                    try
-                    {
-                        await page.GotoAsync(pagedUrl, new()
-                        {
-                            WaitUntil = WaitUntilState.DOMContentLoaded
-                        });
-                    }
-                    catch
-                    {
-                        Console.WriteLine("⚠️ Navigation fehlgeschlagen → nächste Seite");
-                        continue;
-                    }
-
-                    // WAIT
-                    if (page != null && !page.IsClosed)
-                        await page.WaitForTimeoutAsync(3000);
-
-                    // ===============================
-                    // COOKIES
-                    // ===============================
+                    await page.GotoAsync(pagedUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+                    await page.WaitForTimeoutAsync(2000);
+                    
+                    //===================================
+                    // COOKIES automatisch akzeptieren
+                    //===================================
                     if (pageIndex == 1)
                     {
-                        string[] cookieTexts =
-                        {
-                            "Alle akzeptieren","Accept all","Akzeptieren","Accept",
-                            "Zustimmen","Annehmen","Erlauben","Agree all","Agree"
-                        };
-
+                        string[] cookieTexts = { "Alle akzeptieren", "Accept all", "Akzeptieren", "Zustimmen" };
                         bool cookieClicked = false;
-
                         foreach (var text in cookieTexts)
                         {
                             try
                             {
-                                if (page != null && !page.IsClosed)
-                                {
-                                    await page.ClickAsync($"button:has-text('{text}')", new() { Timeout = 2000 });
-                                    Console.WriteLine($"✅ Cookies: {text}");
-                                    cookieClicked = true;
-                                    break;
-                                }
+                                await page.ClickAsync($"button:has-text('{text}')", new() { Timeout = 2000 });
+                                Console.WriteLine($"✅ Cookies: {text}");
+                                cookieClicked = true; break;
                             }
                             catch { }
                         }
-
-                        if (!cookieClicked && page != null && !page.IsClosed)
-                        {
-                            foreach (var frame in page.Frames)
-                            {
-                                foreach (var text in cookieTexts)
-                                {
-                                    try
-                                    {
-                                        await frame.ClickAsync($"button:has-text('{text}')", new() { Timeout = 2000 });
-                                        Console.WriteLine($"✅ Cookie iframe: {text}");
-                                        cookieClicked = true;
-                                        break;
-                                    }
-                                    catch { }
-                                }
-                                if (cookieClicked) break;
-                            }
-                        }
-
-                        if (!cookieClicked)
-                            Console.WriteLine("⚠️ Kein Cookie Popup gefunden");
-
+                        if (!cookieClicked) finalResult.Logs.Add("⚠️ Kein Cookie Popup gefunden");
+                        
+                        //===================
+                        // OVERLAY KILLER
+                        //===================
                         try
                         {
-                            if (page != null && !page.IsClosed)
-                                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+                            await page.EvaluateAsync("document.querySelectorAll('*').forEach(el => { if (window.getComputedStyle(el).position === 'fixed') el.remove(); });");
+                            Console.WriteLine("✅ Overlay entfernt");
                         }
                         catch { }
-
-                        if (page != null && !page.IsClosed)
-                            await page.WaitForTimeoutAsync(3000);
                     }
 
-                    // ===============================
-                    // POPUP KILLER
-                    // ===============================
-                    try
-                    {
-                        if (page != null && !page.IsClosed)
-                        {
-                            await page.EvaluateAsync(@"
-                                document.querySelectorAll('*').forEach(el => {
-                                    const style = window.getComputedStyle(el);
-                                    if ((style.position === 'fixed' || style.position === 'absolute') && el.innerText.length < 500) {
-                                        el.remove();
-                                    }
-                                });
-                            ");
-                        }
-
-                        if (pageIndex == 1)
-                            Console.WriteLine("✅ Overlay entfernt");
-                    }
-                    catch
-                    {
-                        if (pageIndex == 1)
-                            Console.WriteLine("⚠️ Overlay nicht gefunden");
-                    }
-
-                    if (page != null && !page.IsClosed)
-                        await page.WaitForTimeoutAsync(2000);
-
-                    // ===============================
-                    // SCROLL
-                    // ===============================
-                    for (int i = 0; i < 3; i++)
-                    {
-                        if (page != null && !page.IsClosed)
-                        {
-                            await page.EvaluateAsync("window.scrollBy(0, window.innerHeight)");
-                            await page.WaitForTimeoutAsync(1000);
-                        }
-                    }
-
-                    // ===============================
-                    // SCRAPING
-                    // ===============================
-                    if (page == null || page.IsClosed)
-                    {
-                        Console.WriteLine("⚠️ Seite nicht verfügbar");
-                        break;
-                    }
-
-                    Console.WriteLine("\n");
-                    Console.WriteLine("                      *** 🌐 GEIZHALS SUCHERGEBNISSE ***\n");
+                    //======================
+                    // SCROLL & SEARCH
+                    //======================
+                    for (int i = 0; i < 2; i++) { await page.EvaluateAsync("window.scrollBy(0, window.innerHeight)"); await page.WaitForTimeoutAsync(500); }
 
                     var elements = await page.QuerySelectorAllAsync("article.galleryview__item");
-
-                    Console.WriteLine($"{pageIndex}. Seite --> {elements.Count} Produkte");
                     totalCount += elements.Count;
 
                     foreach (var el in elements)
@@ -208,92 +83,49 @@ namespace PriceLens
                         try
                         {
                             var titleEl = await el.QuerySelectorAsync("a.galleryview__name-link");
-                            var priceEl = await el.QuerySelectorAsync("span.gh_price, span[class*='price'], div[class*='price']");
-
+                            var priceEl = await el.QuerySelectorAsync("span.gh_price");
                             var title = titleEl != null ? (await titleEl.InnerTextAsync()).Trim() : "";
-                            var fullText = await el.InnerTextAsync();
                             var priceText = priceEl != null ? await priceEl.InnerTextAsync() : "";
 
-                            if (string.IsNullOrWhiteSpace(title))
-                                continue;
-
-                            if (string.IsNullOrWhiteSpace(priceText) ||
-                                fullText.ToLower().Contains("kein angebot") ||
-                                fullText.ToLower().Contains("keine angebote") ||
-                                fullText.ToLower().Contains("anfrage"))
-                            {
-                                filteredOut++;
-                                continue;
-                            }
+                            if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(priceText)) { filteredOut++; continue; }
 
                             double price = ParsePrice(priceText);
-                            if (price <= 0) continue;
+                            if (price <= 0) { filteredOut++; continue; }
 
-                            var produkt = new Produkt
-                            {
-                                name = title,
-                                kategorie = "Geizhals",
-                                bewertung = price
-                            };
-
-                            results.Add(produkt);
-
-                            Console.WriteLine("-------------------------------------------------------------------------------");
-                            Console.WriteLine($"{index}. {produkt.name}");
-                            Console.WriteLine($"💰 {produkt.bewertung:0.00} €");
-                            Console.WriteLine("🌐 GEIZHALS_AT");
-                            Console.WriteLine("-------------------------------------------------------------------------------");
-
-                            index++;
+                            results.Add(new Produkt { name = title, kategorie = "Geizhals", bewertung = price });
                         }
-                        catch { }
+                        catch { filteredOut++; }
                     }
                 }
-
                 await browser.CloseAsync();
 
-                // ===============================
-                // GEIZHALS STATISTIK
-                // ===============================
-                Console.WriteLine("\n");
-                Console.WriteLine("=====================================================");
-                Console.WriteLine($"✅ Gesamt gefunden:                           {totalCount}");
-                Console.WriteLine($"❌ Gefiltert (Fehlende Preise  --> entfernt): {filteredOut}");
-                Console.WriteLine($"✔ Verwendbare Ergebnisse:                     {results.Count}");
-                Console.WriteLine("=====================================================");
-
-                return results;
+                finalResult.Produkte = results;
+                finalResult.TotalGefunden = totalCount;
+                finalResult.Gefiltert = filteredOut;
+                return finalResult;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"⚠️ Fehler: {ex.Message}");
-                return results;
-            }
+            catch (Exception ex) { finalResult.Logs.Add($"❌ Fehler: {ex.Message}"); return finalResult; }
         }
 
-        // ===============================
-        // PRICE PARSER
-        // ===============================
         private double ParsePrice(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return 0;
-
             var match = System.Text.RegularExpressions.Regex.Match(text, @"\d+[.,]\d+");
-
-            if (match.Success)
-            {
-                var cleaned = match.Value.Replace(",", ".");
-                if (double.TryParse(cleaned,
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out double value))
-                {
-                    return value;
-                }
-            }
-
-            return 0;
+            return match.Success ? double.Parse(match.Value.Replace(",", "."), System.Globalization.CultureInfo.InvariantCulture) : 0;
         }
+    }
+
+    public class DisplayItem 
+    { 
+        public string? Name { get; set; } 
+        public double Preis { get; set; } 
+        public string? Shop { get; set; } 
+        public object? OriginalObject { get; set; } }
+
+    public class ScrapeResult
+    {
+        public List<Produkt> Produkte { get; set; } = new();
+        public List<string> Logs { get; set; } = new();
+        public int TotalGefunden { get; set; }
+        public int Gefiltert { get; set; }
     }
 }

@@ -4,23 +4,23 @@ public class VergleichsService
 {
     private readonly GeminiService gemini = new();
 
-    public async Task<string> VergleicheAsync(Angebot a1, Angebot a2)
+    // Wir übergeben jetzt zwei DisplayItems statt zwei Angebote
+    public async Task<string> VergleicheAsync(DisplayItem item1, DisplayItem item2)
     {
-        var p1 = a1.produkt?.name ?? "Unbekannt";
-        var p2 = a2.produkt?.name ?? "Unbekannt";
-
         var prompt = $@"
 Du bist ein Produktexperte.
 
 Vergleiche die folgenden zwei Produkte objektiv und praxisnah:
 
 PRODUKT 1:
-Name: {p1}
-Preis: {a1.preis} {a1.waehrung}
+Name: {item1.Name}
+Preis: {item1.Preis:0.00} EUR
+Quelle: {item1.Shop}
 
 PRODUKT 2:
-Name: {p2}
-Preis: {a2.preis} {a2.waehrung}
+Name: {item2.Name}
+Preis: {item2.Preis:0.00} EUR
+Quelle: {item2.Shop}
 
 Analysiere strukturiert:
 

@@ -7,7 +7,7 @@ namespace PriceLens;
 public class EbayApiClient : IScraper<List<Angebot>>
 {
     private readonly HttpClient httpClient = new();
-    
+
     // ⚠️ API KEY EBAY (vor GitHub Push entfernen!)
     private readonly string clientId = "";
     private readonly string clientSecret = "";
