@@ -12,6 +12,7 @@ public class EbayApiClient : IScraper<List<Angebot>>
     private readonly string clientId = "";
     private readonly string clientSecret = "";
 
+
     // TOKEN HOLEN
     public async Task<List<Angebot>> SearchAsync(string query, string marketplace)
     {
@@ -29,19 +30,19 @@ public class EbayApiClient : IScraper<List<Angebot>>
         httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);
 
-        // 🌍 Region setzen
+        //  Region setzen
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-MARKETPLACE-ID", marketplace);
 
         // 📍 Kontext (Deutschland)
         httpClient.DefaultRequestHeaders.Add("X-EBAY-C-ENDUSERCTX", "contextualLocation=country=DE");
 
-        // 🔧 Query normalisieren
+        // Query normalisieren
         query = query.Replace(",", ".");
 
         var encodedQuery = Uri.EscapeDataString(query);
 
         // ===============================
-        // 🔥 PAGINATION START
+        // PAGINATION START
         // ===============================
         var result = new List<Angebot>();
 
@@ -52,7 +53,7 @@ public class EbayApiClient : IScraper<List<Angebot>>
         {
             int offset = page * limit;
 
-            // 🌐 URL mit OFFSET
+            // URL mit OFFSET
             var url = $"https://api.ebay.com/buy/browse/v1/item_summary/search?q={encodedQuery}&limit=50";
 
             // 📡 Anfrage senden

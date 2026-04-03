@@ -13,7 +13,8 @@ public class BewertungsService
         // Wir nehmen den Median oder den Durchschnitt der teureren Hälfte, 
         // um den "echten" Preis des Produkts zu schätzen.
         var prices = angebote.Select(a => (double)a.preis).OrderByDescending(p => p).ToList();
-        double topAverage = prices.Take(Math.Max(1, prices.Count / 10)).Average();
+        double topAverage = prices.Any()
+            ?prices.Take(Math.Max(1, prices.Count / 10)).Average():0;
 
         foreach (var a in angebote)
         {
